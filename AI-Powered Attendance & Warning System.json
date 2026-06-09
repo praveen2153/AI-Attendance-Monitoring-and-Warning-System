@@ -1,0 +1,1616 @@
+{
+  "name": "AI-Powered Attendance & Warning System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "attendance-mastersheet",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1696,
+        -544
+      ],
+      "id": "7207c511-dede-4d5e-97aa-d6b432e00dea",
+      "name": "Webhook",
+      "webhookId": "395f820b-0f0e-49cc-b240-2c2790263d29"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "rawData": false
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1472,
+        -544
+      ],
+      "id": "adeaf202-4193-41f4-8a3f-52beecf8f6cd",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ✅ Convert Excel serial to readable date\nfunction excelDateToJSDate(serial) {\n  const utc_days = Math.floor(serial - 25569);\n  const utc_value = utc_days * 86400;\n  const date = new Date(utc_value * 1000);\n\n  return date.toLocaleDateString(\"en-GB\", {\n    day: \"2-digit\",\n    month: \"short\",\n    year: \"numeric\"\n  });\n}\n\n// ✅ Normalize date (handles number + string)\nfunction normalizeDate(dateInput) {\n  if (!dateInput) return \"\";\n\n  if (typeof dateInput === \"number\") {\n    return excelDateToJSDate(dateInput);\n  }\n\n  return dateInput; // already string\n}\n\n// 🚀 MAIN\nconst employees = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const row = items[i].json;\n\n  // 🟢 Detect Header Row\n  if (row[\"Growify Digital LLP\"] === \"Employee  No\") {\n\n    const empRow = items[i + 1]?.json;\n    if (!empRow) continue;\n\n    employees.push({\n      json: {\n        \"Employee No\": empRow[\"Growify Digital LLP\"] || \"\",\n        \"Name\": empRow[\"__EMPTY\"] || \"\",\n\n        // ✅ FIXED DATE HERE\n        \"Date of Joining\": normalizeDate(empRow[\"__EMPTY_1\"]),\n\n        \"Manager No\": empRow[\"__EMPTY_2\"] || \"\",\n        \"Manager Name\": empRow[\"__EMPTY_3\"] || \"\",\n        \"Access Card No\": empRow[\"__EMPTY_4\"] || \"\",\n        \"Department\": empRow[\"__EMPTY_5\"] || \"\",\n        \"Designation\": empRow[\"__EMPTY_6\"] || \"\"\n      }\n    });\n  }\n}\n\nreturn employees;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -944,
+        -672
+      ],
+      "id": "a645cb6d-553d-43df-84e6-1c036b5aa651",
+      "name": "Employee Info"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Skip first 3 rows\nconst data = items.slice(2);\n\n// Return remaining rows as it is\nreturn data;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1248,
+        -544
+      ],
+      "id": "ec0a0529-58d2-42f5-811c-7b412a8846a0",
+      "name": "Skip unused row"
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nlet currentEmployeeId = null;\nlet isAttendanceSection = false;\n\nfor (let i = 0; i < items.length; i++) {\n  const row = items[i].json;\n\n  // 🟢 STEP 1: Detect Employee Header → reset\n  if (row[\"Growify Digital LLP\"] === \"Employee  No\") {\n    isAttendanceSection = false;\n    continue;\n  }\n\n  // 🟢 STEP 2: Capture Employee ID (GD...)\n  if (\n    row[\"Growify Digital LLP\"] &&\n    typeof row[\"Growify Digital LLP\"] === \"string\" &&\n    row[\"Growify Digital LLP\"].startsWith(\"GD\")\n  ) {\n    currentEmployeeId = row[\"Growify Digital LLP\"];\n    continue;\n  }\n\n  // 🟢 STEP 3: Detect Attendance Header\n  if (row[\"__EMPTY\"] === \"Attendance Date\") {\n    isAttendanceSection = true;\n    continue;\n  }\n\n  // 🟢 STEP 4: Skip totals row\n  if (row[\"Growify Digital LLP\"] === \"Total of Hours\") {\n    isAttendanceSection = false;\n    continue;\n  }\n\n  // 🟢 STEP 5: Process Attendance Rows\n  if (isAttendanceSection) {\n    const date = row[\"__EMPTY\"];\n\n    // ❌ Skip invalid rows\n    if (\n      !date ||\n      date === \"Attendance Date\" ||\n      date === \"Name\"\n    ) continue;\n\n    output.push({\n      json: {\n        \"Employee No\": currentEmployeeId,\n        \"Attendance Date\": date,\n        \"Session1 Status\": row[\"__EMPTY_1\"],\n        \"Session2 Status\": row[\"__EMPTY_2\"],\n        \"In Time\": row[\"__EMPTY_3\"] || \"\",\n        \"Out Time\": row[\"__EMPTY_4\"] || \"\",\n        \"Shift Name\": row[\"__EMPTY_5\"],\n        \"Shift In Time\": row[\"__EMPTY_6\"],\n        \"Shift Out Time\": row[\"__EMPTY_7\"],\n        \"Total Work Hours\": row[\"__EMPTY_8\"],\n        \"Late In Hrs\": row[\"__EMPTY_9\"],\n        \"Early Out Hrs\": row[\"__EMPTY_10\"],\n        \"Work Hours\": row[\"__EMPTY_11\"],\n        \"Excess Hours\": row[\"__EMPTY_12\"]\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1024,
+        -448
+      ],
+      "id": "14dc93ad-03a0-45de-b0f2-d17a0889aa42",
+      "name": "Attendance Info"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ✅ Convert Excel serial to readable date\nfunction excelDateToJSDate(serial) {\n  const utc_days = Math.floor(serial - 25569);\n  const utc_value = utc_days * 86400;\n  const date = new Date(utc_value * 1000);\n\n  return date.toLocaleDateString(\"en-GB\", {\n    day: \"2-digit\",\n    month: \"short\",\n    year: \"numeric\"\n  });\n}\n\n// ✅ Handle both number (Excel) and string date-time\nfunction normalizeDate(dateInput) {\n  if (!dateInput) return \"\";\n\n  // If Excel number\n  if (typeof dateInput === \"number\") {\n    return excelDateToJSDate(dateInput);\n  }\n\n  // If already string → return as is\n  return dateInput;\n}\n\n// ✅ Split date & time\nfunction splitDateTime(dateTimeInput) {\n  if (!dateTimeInput) return { date: \"\", time: \"\" };\n\n  // 🔥 First normalize (important)\n  const value = normalizeDate(dateTimeInput);\n\n  if (typeof value !== \"string\") {\n    return { date: value, time: \"\" };\n  }\n\n  const parts = value.split(\" \");\n  if (parts.length < 4) return { date: value, time: \"\" };\n\n  return {\n    date: parts.slice(0, 3).join(\" \"),\n    time: parts[3]\n  };\n}\n\n// 🔥 helper to get value safely\nfunction getValue(row, targetKey) {\n  const foundKey = Object.keys(row).find(\n    k => k.replace(/\\s/g, '').toLowerCase() === targetKey.replace(/\\s/g, '').toLowerCase()\n  );\n  return foundKey ? row[foundKey] : \"\";\n}\n\n// 🚀 MAIN\nreturn items.map(item => {\n  const row = item.json;\n\n  const inData = splitDateTime(getValue(row, \"In Time\"));\n  const outData = splitDateTime(getValue(row, \"Out Time\"));\n\n  return {\n    json: {\n      \"row_number\": row[\"row_number\"],\n\n      \"Employee  No\": getValue(row, \"Employee No\"),\n\n      // ✅ FIXED DATE HERE\n      \"Attendance Date\": normalizeDate(getValue(row, \"Attendance Date\")),\n\n      \"Session1  Status\": getValue(row, \"Session1 Status\"),\n      \"Session2  Status\": getValue(row, \"Session2 Status\"),\n\n      \"In Time\": inData.date,\n      \"Check-In\": inData.time,\n\n      \"Out Time\": outData.date,\n      \"Check-Out\": outData.time,\n\n      \"Shift Name\": getValue(row, \"Shift Name\"),\n      \"Shift In Time\": getValue(row, \"Shift In Time\"),\n      \"Shift Out Time\": getValue(row, \"Shift Out Time\"),\n      \"Total Work Hours\": getValue(row, \"Total Work Hours\"),\n      \"Late In Hrs\": getValue(row, \"Late In Hrs\"),\n      \"Early Out Hrs\": getValue(row, \"Early Out Hrs\"),\n      \"Work Hours\": getValue(row, \"Work Hours\"),\n      \"Excess Hours\": getValue(row, \"Excess Hours\")\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        -448
+      ],
+      "id": "fbf4722c-71bc-4e91-a6df-3571bb34ac46",
+      "name": "Splitting date and time"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🔹 Helper to convert date string → sortable date\nfunction parseDate(dateStr) {\n  const months = {\n    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,\n    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11\n  };\n\n  const parts = dateStr.split(\" \");\n  if (parts.length !== 3) return new Date(0);\n\n  return new Date(parts[2], months[parts[1]], parts[0]);\n}\n\n// 🔹 SORT ITEMS BY DATE\nitems.sort((a, b) => {\n  const dateA = parseDate(a.json[\"Attendance Date\"]);\n  const dateB = parseDate(b.json[\"Attendance Date\"]);\n  return dateA - dateB;\n});\n\n// 🔹 RETURN SAME STRUCTURE (NO CHANGE)\nreturn items.map(item => ({\n  json: item.json\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        -544
+      ],
+      "id": "2d55a775-f6ce-4096-b903-f3b4beeb4382",
+      "name": "Attendance based on date"
+    },
+    {
+      "parameters": {
+        "jsCode": "function timeToMinutes(timeStr) {\n  if (!timeStr) return null;\n\n  const clean = timeStr.replace(/\\s/g, \"\"); // remove spaces\n  const parts = clean.split(\":\");\n\n  if (parts.length !== 2) return null;\n\n  const hours = parseInt(parts[0], 10);\n  const minutes = parseInt(parts[1], 10);\n\n  if (isNaN(hours) || isNaN(minutes)) return null;\n\n  return hours * 60 + minutes;\n}\n\nreturn items.map(item => {\n  const row = item.json;\n\n  const checkIn = row[\"Check-In\"];\n\n  let lateStatus = \"\";\n\n  if (!checkIn || checkIn === \"\") {\n    lateStatus = \"\";\n  } else {\n    const checkInMin = timeToMinutes(checkIn);\n    const threshold = timeToMinutes(\"11:00\");\n\n    if (checkInMin > threshold) {\n      lateStatus = \"Yes\";\n    } else {\n      lateStatus = \"No\";\n    }\n  }\n\n  return {\n    json: {\n      ...row, // ✅ keep all existing columns\n\n      // 🔥 ADD NEW COLUMN\n      \"Late Status\": lateStatus\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -544
+      ],
+      "id": "016e82f7-f9e3-466c-908e-a76eab43caa3",
+      "name": "Late In status check"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "Employee No",
+              "field2": "Employee  No"
+            }
+          ]
+        },
+        "joinMode": "enrichInput2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -576,
+        -544
+      ],
+      "id": "39d9d12b-7218-48c6-82e1-d1a6acbe3a0a",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc",
+          "mode": "list",
+          "cachedResultName": "ASSESMENT",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1499651138,
+          "mode": "list",
+          "cachedResultName": "Structure 1 — Daily Processed Records ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit#gid=1499651138"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee ID": "={{ $json[\"Employee No\"] }}",
+            "Name": "={{ $json.Name }}",
+            "Date": "={{ $json[\"Attendance Date\"] }}",
+            "Check-In": "={{ $json[\"Check-In\"] }}",
+            "Check-Out": "={{ $json[\"Check-Out\"] }}",
+            "Late Flag": "={{ $json[\"Late Status\"] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Check-In",
+              "displayName": "Check-In",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Check-Out",
+              "displayName": "Check-Out",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Late Flag",
+              "displayName": "Late Flag",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        288,
+        -544
+      ],
+      "id": "abe7c2da-9423-4b1d-9d9b-91a26870414e",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "usx6Mrnh2o1ayJS9",
+          "name": "Google_sheet_credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "43354ead-d174-401d-a8cb-705ba547cc3e",
+              "leftValue": "={{ $json[\"Late Count\"] }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        768,
+        -448
+      ],
+      "id": "d36c68dd-6890-40bc-84ce-4a6bf37a2179",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5c8b9bc1-a265-4316-96f7-0ba96f13ca68",
+              "leftValue": "={{ $json[\"Late Count\"] }}",
+              "rightValue": 2,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1056,
+        -160
+      ],
+      "id": "3afc3148-adb1-43c1-be86-e35d3e602662",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6a59f395-858a-4a68-9c36-da21ce0b8629",
+              "leftValue": "={{ $json[\"Late Count\"] }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1408,
+        32
+      ],
+      "id": "f21835f2-6af8-4675-9d43-30f6821ac819",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc",
+          "mode": "list",
+          "cachedResultName": "ASSESMENT",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1153518810,
+          "mode": "list",
+          "cachedResultName": "Structure 2 — Monthly Late Counter per Employee ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit#gid=1153518810"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee ID": "={{ $json[\"Employee ID\"] }}",
+            "Name": "={{ $json.Name }}",
+            "Current Monthly Late Count": "={{ $json[\"Current Monthly Late Count\"] }}",
+            "Month/Year": "={{ $json[\"Month/Year\"] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Monthly Late Count",
+              "displayName": "Current Monthly Late Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Warning Date",
+              "displayName": "Last Warning Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Month/Year",
+              "displayName": "Month/Year",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        768,
+        -736
+      ],
+      "id": "f08b01b1-d5fd-4c00-9f95-742886ebf09d",
+      "name": "Append row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "usx6Mrnh2o1ayJS9",
+          "name": "Google_sheet_credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc",
+          "mode": "list",
+          "cachedResultName": "ASSESMENT",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1153518810,
+          "mode": "list",
+          "cachedResultName": "Structure 2 — Monthly Late Counter per Employee ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit#gid=1153518810"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee ID": "={{ $json[\"Employee ID\"] }}",
+            "Last Warning Date": "={{ $json.Date }}"
+          },
+          "matchingColumns": [
+            "Employee ID"
+          ],
+          "schema": [
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Current Monthly Late Count",
+              "displayName": "Current Monthly Late Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Warning Date",
+              "displayName": "Last Warning Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Month/Year",
+              "displayName": "Month/Year",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1760,
+        128
+      ],
+      "id": "afc2b60f-e1a1-493b-9d1b-b8e40566c531",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "usx6Mrnh2o1ayJS9",
+          "name": "Google_sheet_credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc",
+          "mode": "list",
+          "cachedResultName": "ASSESMENT",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1153518810,
+          "mode": "list",
+          "cachedResultName": "Structure 2 — Monthly Late Counter per Employee ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit#gid=1153518810"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee ID": "={{ $json[\"Employee ID\"] }}",
+            "Last Warning Date": "={{ $json.Date }}"
+          },
+          "matchingColumns": [
+            "Employee ID"
+          ],
+          "schema": [
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Current Monthly Late Count",
+              "displayName": "Current Monthly Late Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Warning Date",
+              "displayName": "Last Warning Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Month/Year",
+              "displayName": "Month/Year",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1408,
+        -256
+      ],
+      "id": "ee66ba9d-3231-4645-a44d-e7a6a4b8cf82",
+      "name": "Update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "usx6Mrnh2o1ayJS9",
+          "name": "Google_sheet_credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc",
+          "mode": "list",
+          "cachedResultName": "ASSESMENT",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1153518810,
+          "mode": "list",
+          "cachedResultName": "Structure 2 — Monthly Late Counter per Employee ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-yyI4ijqnHy2_tDC4j4Cug99IAXae2epRwQs3MSx-Tc/edit#gid=1153518810"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee ID": "={{ $json[\"Employee ID\"] }}",
+            "Last Warning Date": "={{ $json.Date }}"
+          },
+          "matchingColumns": [
+            "Employee ID"
+          ],
+          "schema": [
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Current Monthly Late Count",
+              "displayName": "Current Monthly Late Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Warning Date",
+              "displayName": "Last Warning Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Month/Year",
+              "displayName": "Month/Year",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1056,
+        -464
+      ],
+      "id": "ce44c0b6-44aa-40ef-98e3-590dcd86a404",
+      "name": "Update row in sheet2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "usx6Mrnh2o1ayJS9",
+          "name": "Google_sheet_credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items\n  .filter(item => item.json[\"Late Status\"] !== \"\")\n  .map(item => {\n    const row = item.json;\n\n    const employeeNo =\n      row[\"Employee No\"] ||\n      row[\"Employee  No\"] ||\n      \"\";\n\n    return {\n      json: {\n        \"Employee No\": employeeNo,\n        \"Name\": row[\"Name\"] || \"\",\n        \"Attendance Date\": row[\"Attendance Date\"] || \"\",\n        \"Check-In\": row[\"Check-In\"] || \"\",\n        \"Check-Out\": row[\"Check-Out\"] || \"\",\n        \"Late Status\": row[\"Late Status\"] || \"\"\n      }\n    };\n  });"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -544
+      ],
+      "id": "6ef152b1-2401-4422-8f65-b3fcaff818ca",
+      "name": "Fiter data based on Late Status"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Group late counts per employee\nconst counts = {};\n\nitems.forEach(item => {\n  const emp = item.json[\"Employee ID\"];\n\n  if (item.json[\"Late Flag\"] === \"Yes\") {\n    counts[emp] = (counts[emp] || 0) + 1;\n    item.json[\"Late Count\"] = counts[emp];\n  } else {\n    item.json[\"Late Count\"] = 0;\n  }\n});\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        -448
+      ],
+      "id": "69622c3f-dc58-4b54-9c2a-6d465d123da5",
+      "name": "Late Counts per day"
+    },
+    {
+      "parameters": {
+        "jsCode": "const employeeMap = {};\n\n// Loop through all records\nitems.forEach(item => {\n  const empId = item.json[\"Employee ID\"];\n  const name = item.json[\"Name\"];\n  const date = item.json[\"Date\"];\n  const lateFlag = item.json[\"Late Flag\"];\n\n  // Extract Month-Year (e.g., Feb 2026)\n  let monthYear = \"\";\n  if (date) {\n    const parts = date.split(\" \"); // [\"01\",\"Feb\",\"2026\"]\n    monthYear = parts[1] + \" \" + parts[2];\n  }\n\n  // Initialize employee\n  if (!employeeMap[empId]) {\n    employeeMap[empId] = {\n      \"Employee ID\": empId,\n      \"Name\": name,\n      \"Current Monthly Late Count\": 0,\n      \"Month/Year\": monthYear\n    };\n  }\n\n  // Count late\n  if (lateFlag === \"Yes\") {\n    employeeMap[empId][\"Current Monthly Late Count\"]++;\n  }\n});\n\n// Convert object → array\nreturn Object.values(employeeMap).map(emp => ({ json: emp }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        -736
+      ],
+      "id": "d3e08980-c925-40a0-a3ff-19ff5d7f7203",
+      "name": "Late Counts per Months"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are an HR manager writing a professional email.\n\nWrite a personalized warning email based on employee lateness.\n\nEmployee Details:\nName: {{$json[\"Name\"]}}\nEmployee ID: {{$json[\"Employee ID\"]}}\nDate: {{$json[\"Date\"]}}\nLate Count: {{$json[\"Late Count\"]}}\n\nInstructions:\nWrite a polite reminder about punctuality.\nmail in proper formate:\nSubject:\nBody:\nshuld be in seperate form\n\nKeep the tone professional and concise."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        992,
+        -640
+      ],
+      "id": "1736b201-babf-472b-8be4-4cc0f485828b",
+      "name": "Message a model",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "openAiApi": {
+          "id": "88RZIPoWVsdAGDHU",
+          "name": "OpenAi account 10"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are an HR manager writing a professional email.\n\nWrite a personalized warning email based on employee lateness.\n\nEmployee Details:\nName: {{$json[\"Name\"]}}\nEmployee ID: {{$json[\"Employee ID\"]}}\nDate: {{$json[\"Date\"]}}\nLate Count: {{$json[\"Late Count\"]}}\n\nInstructions:\nWrite a strict warning about repeated lateness\nmail in proper formate:\nSubject:\nBody:\nshuld be in seperate form like:\n{\n  \"Subject\": \"Reminder Regarding Punctuality\",\n  \"Body\": \"Dear [name], I hope this message finds you well. I am writing to discuss your punctuality...\"\n}\n\nKeep the tone professional and concise."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1344,
+        -448
+      ],
+      "id": "804d0c7c-ab37-4002-979c-367afe5d5e0e",
+      "name": "Message a model1",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "openAiApi": {
+          "id": "88RZIPoWVsdAGDHU",
+          "name": "OpenAi account 10"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are an HR manager writing a professional email.\n\nWrite a personalized warning email based on employee lateness.\n\nEmployee Details:\nName: {{$json[\"Name\"]}}\nEmployee ID: {{$json[\"Employee ID\"]}}\nDate: {{$json[\"Date\"]}}\nLate Count: {{$json[\"Late Count\"]}}\n\nInstructions:\nWrite a final warning and mention that a meeting is scheduled at 5:00 PM\nmail in proper formate:\nSubject:\nBody:\nshuld be in seperate form\nKeep the tone professional and concise."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1696,
+        -64
+      ],
+      "id": "60162b85-a123-486f-8d1b-f0d01a6842cf",
+      "name": "Message a model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "88RZIPoWVsdAGDHU",
+          "name": "OpenAi account 10"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $json.Subject }}",
+        "message": "={{ $json.Body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        -640
+      ],
+      "id": "6b501a7a-05a7-4971-abd2-40403ba9a9a5",
+      "name": "Create a draft",
+      "webhookId": "9a04ae10-25cb-49ce-b69a-79bac9dbfb40",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "qh1oJyXw4sUV6ATr",
+          "name": "Gmail authentication"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $json.Subject }}",
+        "message": "={{ $json.Body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2048,
+        -448
+      ],
+      "id": "715be579-c842-4392-82c3-b17e7f0deee8",
+      "name": "Create a draft1",
+      "webhookId": "9a04ae10-25cb-49ce-b69a-79bac9dbfb40",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "qh1oJyXw4sUV6ATr",
+          "name": "Gmail authentication"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $json.Subject }}",
+        "message": "={{ $json.Body }}\n{{ $json.Calendar_Link }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2496,
+        -64
+      ],
+      "id": "4e696455-c5ed-47e8-9288-25456dc20d35",
+      "name": "Create a draft2",
+      "webhookId": "9a04ae10-25cb-49ce-b69a-79bac9dbfb40",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "qh1oJyXw4sUV6ATr",
+          "name": "Gmail authentication"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "praveenkumaar190@gmail.com",
+          "mode": "list",
+          "cachedResultName": "praveenkumaar190@gmail.com"
+        },
+        "start": "={{ $('If2').item.json.Date }} 17:00",
+        "end": "={{ $('If2').item.json.Date }} 17:30",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1760,
+        -256
+      ],
+      "id": "bf3f5792-ebf0-479a-bf9a-b1e53894770d",
+      "name": "Create an event",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "84WkwDoqRetI7IZi",
+          "name": "Google Calendar account 3"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2048,
+        -64
+      ],
+      "id": "6809e190-e2e4-486b-88f5-40d6056ebe38",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  // 🔥 Get correct text\n  const text = item.json?.output?.[0]?.content?.[0]?.text || \"\";\n\n  let subject = \"\";\n  let body = \"\";\n\n  // ✅ Extract Subject (handles both formats)\n  const subjectMatch = text.match(/Subject[:*]*\\s*(.+)/i);\n  if (subjectMatch) {\n    subject = subjectMatch[1].split(\"\\n\")[0].trim();\n  }\n\n  // ✅ Extract Body (multiple formats)\n  if (text.includes(\"**Body:**\")) {\n    body = text.split(\"**Body:**\")[1];\n  } else if (text.includes(\"---\")) {\n    body = text.split(\"---\")[1];\n  } else {\n    body = text.replace(/Subject[:*]*\\s*(.+)/i, \"\");\n  }\n\n  // 🔥 CLEAN TEXT (REMOVE \\n, \\n\\n, EXTRA SPACES)\n  body = body\n    .replace(/\\n+/g, \" \")   // replace all new lines with space\n    .replace(/\\s+/g, \" \")   // remove extra spaces\n    .trim();\n\n  return {\n    json: {\n      Subject: subject,\n      Body: body\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        -640
+      ],
+      "id": "b48d8a01-7beb-4e2d-9c42-3fc1eb3b4b69",
+      "name": "fomating the mail"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  let text = item.json?.output?.[0]?.content?.[0]?.text || \"\";\n\n  let subject = \"\";\n  let body = \"\";\n\n  // 🟢 CASE 1: If response is JSON string\n  if (text.trim().startsWith(\"{\")) {\n    try {\n      const parsed = JSON.parse(text);\n\n      subject = parsed.Subject || \"\";\n      body = parsed.Body || \"\";\n    } catch (e) {\n      // fallback if JSON parse fails\n    }\n  }\n\n  // 🟡 CASE 2: Markdown / Normal text\n  if (!subject) {\n    const subjectMatch = text.match(/Subject[:*\"]*\\s*(.+)/i);\n    if (subjectMatch) {\n      subject = subjectMatch[1].split(\"\\n\")[0].trim();\n    }\n  }\n\n  if (!body) {\n    if (text.includes(\"**Body:**\")) {\n      body = text.split(\"**Body:**\")[1];\n    } else if (text.includes(\"---\")) {\n      body = text.split(\"---\")[1];\n    } else {\n      body = text.replace(/Subject[:*\"]*\\s*(.+)/i, \"\");\n    }\n  }\n\n  // 🔥 CLEAN BODY (REMOVE \\n, \\n\\n, EXTRA SPACES)\n  body = body\n    .replace(/\\\\n/g, \" \")   // remove escaped \\n\n    .replace(/\\n+/g, \" \")   // remove real new lines\n    .replace(/\\s+/g, \" \")   // remove extra spaces\n    .trim();\n\n  return {\n    json: {\n      Subject: subject,\n      Body: body\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -448
+      ],
+      "id": "af7ef14b-e0b2-461c-be70-270d70548e74",
+      "name": "fomating the mail1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  let text = item.json?.output?.[0]?.content?.[0]?.text || \"\";\n\n  let subject = \"\";\n  let body = \"\";\n\n  // 📅 Get calendar link\n  const calendarLink = item.json?.htmlLink || \"\";\n\n  // 🟢 CASE 1: If AI returns JSON string\n  if (text.trim().startsWith(\"{\")) {\n    try {\n      const parsed = JSON.parse(text);\n      subject = parsed.Subject || \"\";\n      body = parsed.Body || \"\";\n    } catch (e) {}\n  }\n\n  // 🟡 CASE 2: Extract from normal / markdown text\n  if (!subject) {\n    const subjectMatch = text.match(/Subject[:*\"]*\\s*(.+)/i);\n    if (subjectMatch) {\n      subject = subjectMatch[1].split(\"\\n\")[0].trim();\n    }\n  }\n\n  if (!body) {\n    if (text.includes(\"**Body:**\")) {\n      body = text.split(\"**Body:**\")[1];\n    } else if (text.includes(\"---\")) {\n      body = text.split(\"---\")[1];\n    } else {\n      body = text.replace(/Subject[:*\"]*\\s*(.+)/i, \"\");\n    }\n  }\n\n  // 🔥 CLEAN BODY\n  body = body\n    .replace(/\\\\n/g, \" \")\n    .replace(/\\n+/g, \" \")\n    .replace(/\\s+/g, \" \")\n    .trim();\n\n  // 📅 ATTACH CALENDAR LINK (only for 3rd strike case ideally)\n  if (calendarLink) {\n    body += ` Please join the scheduled meeting using this link: `;\n  }\n\n  return {\n    json: {\n      Subject: subject,\n      Body: body,\n      Calendar_Link: calendarLink\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        -64
+      ],
+      "id": "79875dcb-2605-48df-bc3b-768d8d782127",
+      "name": "fomating the mail2"
+    },
+    {
+      "parameters": {
+        "content": "## Data processing , cleaning and checking Late status",
+        "height": 528,
+        "width": 1808,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1328,
+        -816
+      ],
+      "typeVersion": 1,
+      "id": "791f7b9b-6128-45da-aa68-7c7e8cb96e7d",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Webhook trigger and data extraction",
+        "height": 528,
+        "width": 496,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1824,
+        -816
+      ],
+      "typeVersion": 1,
+      "id": "676c669b-32d6-471d-abb0-e2641f9b54c7",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Counting Late Status ",
+        "height": 528,
+        "width": 496,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        480,
+        -816
+      ],
+      "typeVersion": 1,
+      "id": "f6b74c1e-368d-4334-a2c0-71b91bc08cee",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Personalized warning email Flow",
+        "height": 1104,
+        "width": 1760,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        976,
+        -816
+      ],
+      "typeVersion": 1,
+      "id": "115d0d24-c1f4-41b4-961e-57ed54663d27",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## 1st Warning",
+        "height": 80,
+        "width": 192,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        752,
+        -496
+      ],
+      "typeVersion": 1,
+      "id": "bbf21f1d-24dd-4d6e-adc5-cfeb2d998fe2",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "## 3rd Warning & meeting",
+        "height": 80,
+        "width": 192,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1312,
+        -48
+      ],
+      "typeVersion": 1,
+      "id": "98d4e85f-1fb9-41ca-b6fd-03c0cdf7c80b",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "## 2nd Warning",
+        "height": 80,
+        "width": 192,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1008,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "942e1853-0090-41ff-93ee-aa59913f3879",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "## Monthly",
+        "height": 80,
+        "width": 150,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        384,
+        -640
+      ],
+      "typeVersion": 1,
+      "id": "8da5eb28-bad8-4a76-a666-794be47ff381",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "## Daily",
+        "height": 80,
+        "width": 150,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        432,
+        -432
+      ],
+      "typeVersion": 1,
+      "id": "4d080e36-bf02-48a4-b605-5eaad2d813a6",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "## Employee Data Extraction",
+        "height": 80,
+        "width": 320,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1040,
+        -720
+      ],
+      "typeVersion": 1,
+      "id": "39bcfcc4-6e09-4fe9-a8d3-0ab90d100938",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## Employee Attenedance Extraction",
+        "height": 80,
+        "width": 416,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1072,
+        -496
+      ],
+      "typeVersion": 1,
+      "id": "11c8a975-76a5-4399-bfff-5f7d4dbf0dcd",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "## Late Status check node",
+        "height": 80,
+        "width": 310,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -240,
+        -624
+      ],
+      "typeVersion": 1,
+      "id": "60ddc1e6-eea9-4f64-b171-6cc9de39aa92",
+      "name": "Sticky Note11"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "pulpdevelopment.app.n8n.cloud",
+            "user-agent": "curl/8.18.0",
+            "content-length": "210611",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "103.211.52.179",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "IN",
+            "cf-ray": "9dfce3ea6887d14f-DEL",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "multipart/form-data; boundary=------------------------pjr46U3lES5979sXX19CTO",
+            "x-forwarded-for": "103.211.52.179, 104.23.216.83",
+            "x-forwarded-host": "pulpdevelopment.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-18-868c78b8f-pctn9",
+            "x-is-trusted": "yes",
+            "x-real-ip": "103.211.52.179"
+          },
+          "params": {},
+          "query": {},
+          "body": {},
+          "webhookUrl": "https://pulpdevelopment.app.n8n.cloud/webhook-test/attendance-mastersheet",
+          "executionMode": "test"
+        },
+        "binary": {
+          "data": {
+            "mimeType": "application/octet-stream",
+            "fileExtension": "bin",
+            "data": "filesystem-v2",
+            "fileName": "attendance.xlsx.xlsx",
+            "id": "filesystem-v2:workflows/09zp035goEek61Ik/executions/temp/binary_data/62d2e908-d7e9-4466-92a2-e899aa6b5940",
+            "fileSize": "210 kB"
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Employee Info": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip unused row": {
+      "main": [
+        [
+          {
+            "node": "Employee Info",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Attendance Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attendance Info": {
+      "main": [
+        [
+          {
+            "node": "Splitting date and time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Splitting date and time": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Attendance based on date": {
+      "main": [
+        [
+          {
+            "node": "Late In status check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Late In status check": {
+      "main": [
+        [
+          {
+            "node": "Fiter data based on Late Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Attendance based on date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Late Counts per day",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Late Counts per Months",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Message a model2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fiter data based on Late Status": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Late Counts per day": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Late Counts per Months": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "fomating the mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "fomating the mail1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model2": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "fomating the mail2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fomating the mail": {
+      "main": [
+        [
+          {
+            "node": "Create a draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fomating the mail1": {
+      "main": [
+        [
+          {
+            "node": "Create a draft1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fomating the mail2": {
+      "main": [
+        [
+          {
+            "node": "Create a draft2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Skip unused row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "573bdc34-9680-425f-9c15-829d4bdcbb54",
+  "meta": {
+    "instanceId": "cfe190f1a65e97ab62057245be31c738730e1f9f6f3acdd2deea7c4fe11da75e"
+  },
+  "id": "09zp035goEek61Ik",
+  "tags": []
+}
